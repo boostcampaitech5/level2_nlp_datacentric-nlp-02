@@ -1,4 +1,5 @@
 import os
+import torch
 
 from datetime import datetime, timezone, timedelta
 
@@ -13,16 +14,16 @@ def get_folder_name(CFG):
     use_data_str = "_".join([s.split(".")[0]  for s in CFG['select_data']])
     folder_name = f"{now.strftime('%d%H%M%S')}_{use_data_str}"
     save_path = f"./results/{folder_name}"
-    breakpoint()
     CFG['save_path'] = save_path
     os.makedirs(save_path)
+    
     return folder_name, save_path
 
-def create_new_data():
-    """
-    annotations을 분리한 새로운 데이터셋 만드는 메소드
-    """
-    pass
+def calc_accuracy(X, Y):
+    max_vals, max_indices = torch.max(X, 1)
+    acc = (max_indices == Y).sum().data.cpu().numpy()/max_indices.size()[0]
+
+    return acc
 
 
 if __name__ == "__main__":

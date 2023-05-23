@@ -5,7 +5,7 @@ class DataCleaning():
     def __init__(self, select_list):
         self.select_list = select_list
 
-    def process(self, df, train=True):
+    def process(self, df):
         if self.select_list:
             for method_name in self.select_list:
                 method = eval("self." + method_name)

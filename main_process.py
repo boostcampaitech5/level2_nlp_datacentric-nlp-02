@@ -1,14 +1,11 @@
 import numpy as np
-import pandas as pd
 import gluonnlp as nlp
 import torch
-import torch.nn.functional as F
-import torch.optim as optim
 import yaml
 import wandb
 
 from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from tqdm.notebook import tqdm
 from kobert import get_tokenizer
 from kobert import get_pytorch_kobert_model
@@ -17,68 +14,13 @@ from transformers.optimization import get_cosine_schedule_with_warmup
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, f1_score, precision_score, recall_score
 from shutil import copyfile
+from sklearn.metrics import confusion_matrix
 
-from utils import utils
-from data_preprocessing.data_cleaning import DataCleaning
-from data_preprocessing.data_augmentation import DataAugmentation
+from models import models
+from utils import data_controller, utils
 
 import warnings
 warnings.filterwarnings('ignore')
-
-
-class BERTDataset(Dataset):
-    def __init__(self, dataset, bert_tokenizer, max_len, pad, pair):
-        transform = nlp.data.BERTSentenceTransform(
-            bert_tokenizer, max_seq_length=max_len, pad=pad, pair=pair)
-        texts = dataset['input_text'].tolist()
-        targets = dataset['target'].tolist()
-
-        self.sentences = [transform(i) for i in texts]
-        self.labels = [np.int32(i) for i in targets]
-
-    def __getitem__(self, i):
-        return (self.sentences[i] + (self.labels[i], ))
-
-    def __len__(self):
-        return (len(self.labels))
-
-
-class BERTClassifier(nn.Module):
-    def __init__(self,
-                 bert,
-                 hidden_size = 768,
-                 num_classes=7,
-                 dr_rate=None,
-                 params=None):
-        super(BERTClassifier, self).__init__()
-        self.bert = bert
-        self.dr_rate = dr_rate
-                 
-        self.classifier = nn.Linear(hidden_size , num_classes)
-        if dr_rate:
-            self.dropout = nn.Dropout(p=dr_rate)
-    
-    def gen_attention_mask(self, token_ids, valid_length):
-        attention_mask = torch.zeros_like(token_ids)
-        for i, v in enumerate(valid_length):
-            attention_mask[i][:v] = 1
-        return attention_mask.float()
-
-    def forward(self, token_ids, valid_length, segment_ids):
-        attention_mask = self.gen_attention_mask(token_ids, valid_length)
-        
-        _, pooler = self.bert(input_ids = token_ids, token_type_ids = segment_ids.long(), attention_mask = attention_mask.float().to(token_ids.device))
-        if self.dr_rate:
-            out = self.dropout(pooler)
-        else:
-            out = pooler
-        return self.classifier(out)
-
-def calc_accuracy(X, Y):
-    max_vals, max_indices = torch.max(X, 1)
-    acc = (max_indices == Y).sum().data.cpu().numpy()/max_indices.size()[0]
-
-    return acc
 
 
 ### Setting parameters ###
@@ -96,7 +38,6 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 # 넘파이 랜덤시드 고정
 np.random.seed(SEED)
-
 # config 파일 불러오기
 with open('./use_config.yaml') as f:
     CFG = yaml.load(f, Loader=yaml.FullLoader)
@@ -108,29 +49,25 @@ if __name__ == "__main__":
     # wandb 설정
     wandb.init(name=folder_name, project=CFG['wandb']['project'], 
                config=CFG, entity=CFG['wandb']['id'], dir=save_path)
-    # 데이터 클리닝, 데이터 증강 클래스 선언
-    DC = DataCleaning(CFG['select_DC'])
-    DA = DataCleaning(CFG['select_DA'])
 
     ### Load Tokenizer and Model ###
     bertmodel, vocab = get_pytorch_kobert_model(cachedir=".cache")
     tokenizer = get_tokenizer()
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
+    transform = nlp.data.BERTSentenceTransform(tok, max_seq_length=max_len, pad=True, pair=False)
 
     ### Define Dataset ###
-    train_df = pd.read_csv('data/train.csv')
-    train_df = DC.process(train_df)
-    train_df = DA.process(train_df)
+    train_df = data_controller.get_train_dataset(CFG)
     train, val = train_test_split(train_df, train_size=0.7, random_state=SEED)
 
-    data_train = BERTDataset(train, tok, max_len, True, False)
-    data_val = BERTDataset(val, tok, max_len, True, False)
+    data_train = data_controller.BERTDataset(train, transform)
+    data_val = data_controller.BERTDataset(val, transform)
 
     train_dataloader = DataLoader(data_train, batch_size=batch_size)
     val_dataloader = DataLoader(data_val, batch_size=batch_size)
 
     ### Define Model ###
-    model = BERTClassifier(bertmodel, dr_rate=0.5).to(DEVICE)
+    model = models.BERTClassifier(bertmodel, dr_rate=0.5).to(DEVICE)
 
     ### Define Optimizer and Scheduler ###
     # Prepare optimizer and schedule (linear warmup and decay)
@@ -149,6 +86,7 @@ if __name__ == "__main__":
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
 
     ### Train Model ###
+    val_pred_y = []
     for e in range(num_epochs):
         train_acc = 0.0
         val_acc = 0.0
@@ -169,13 +107,12 @@ if __name__ == "__main__":
             scheduler.step()  # Update learning rate schedule
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
-            train_acc += calc_accuracy(out, label)
+            train_acc += utils.calc_accuracy(out, label)
             if batch_id % log_interval == 0:
                 print("epoch {} batch id {} loss {} train acc {}".format(e+1, batch_id+1, loss.data.cpu().numpy(), train_acc / (batch_id+1)))
 
             wandb.log({"train loss": loss,
                        "train accuracy": train_acc / (batch_id+1)})
-
         print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
 
         with torch.no_grad():
@@ -188,18 +125,17 @@ if __name__ == "__main__":
                 out = model(token_ids, valid_length, segment_ids)
                 loss = loss_fn(out, label)
 
-                val_acc += calc_accuracy(out, label)
+                val_pred_y.append(out)
+                val_acc += utils.calc_accuracy(out, label)
 
                 wandb.log({"val loss": loss,
                            "val accuracy": val_acc / (batch_id+1)})
-
             print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
 
     ### Evaluate Model ###
-    test_df = pd.read_csv('data/test.csv')
+    test_df = data_controller.get_test_dataset()
     test_df['target'] = [0]*len(test_df)
-    test = DC.process(test_df, train=False)
-    data_test = BERTDataset(test, tok, max_len, True, False)
+    data_test = data_controller.BERTDataset(test_df, transform)
     eval_dataloader = DataLoader(data_test, batch_size=batch_size, shuffle=False)
 
     preds = []

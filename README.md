@@ -2,15 +2,15 @@
 
 - 팀명: 강남 특공대
 - 인원: 5명
-- 주최: 부스트캠프 AI Tech 5기 | level 3 프로젝트
+- 주최: 부스트캠프 AI Tech 5기 | level 2
 - 프로젝트 기간: 2023년 5월 24일 ~ 2023년 6월 1일
-- 주제: 
+- 주제: 뉴스 제목으로 주제 분류
 - 데이터셋
-  - train data: 개
-  - test data: 개
+  - train data: 52,530 개
+  - test data: 9,107 개
 - 평가 방법
   - `F1 Score`
-- 개발 스택: `Git` `Notion` `Ubuntu` `Python` `Wandb`
+- 개발 스택: `Git` `Notion` `Ubuntu` `Python` `PyTorch` `Wandb`
 - 결과: 
 
 # 목차

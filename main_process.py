@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import pandas as pd
 import gluonnlp as nlp
@@ -20,8 +19,8 @@ from sklearn.metrics import classification_report, accuracy_score, f1_score, pre
 from shutil import copyfile
 
 from utils import utils
-from data_preprocessing.data_cleaning import DC
-from data_preprocessing.data_augmentation import DA
+from data_preprocessing.data_cleaning import DataCleaning
+from data_preprocessing.data_augmentation import DataAugmentation
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -74,12 +73,12 @@ class BERTClassifier(nn.Module):
         else:
             out = pooler
         return self.classifier(out)
-    
 
-def calc_accuracy(X,Y):
+def calc_accuracy(X, Y):
     max_vals, max_indices = torch.max(X, 1)
-    train_acc = (max_indices == Y).sum().data.cpu().numpy()/max_indices.size()[0]
-    return train_acc
+    acc = (max_indices == Y).sum().data.cpu().numpy()/max_indices.size()[0]
+
+    return acc
 
 
 ### Setting parameters ###
@@ -91,10 +90,13 @@ max_grad_norm = 1
 log_interval = 200
 learning_rate =  5e-5
 DEVICE = torch.device('cuda')
-BASE_DIR = os.getcwd()
-DATA_DIR = os.path.join(BASE_DIR, './data')
-OUTPUT_DIR = os.path.join(BASE_DIR, './output')
 SEED = 42
+# 파이토치의 랜덤시드 고정
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+# 넘파이 랜덤시드 고정
+np.random.seed(SEED)
+
 # config 파일 불러오기
 with open('./use_config.yaml') as f:
     CFG = yaml.load(f, Loader=yaml.FullLoader)
@@ -103,6 +105,12 @@ if __name__ == "__main__":
     # 실험 결과 파일 생성 및 폴더명 가져오기
     folder_name, save_path = utils.get_folder_name(CFG)
     copyfile('use_config.yaml', f"{save_path}/config.yaml")
+    # wandb 설정
+    wandb.init(name=folder_name, project=CFG['wandb']['project'], 
+               config=CFG, entity=CFG['wandb']['id'], dir=save_path)
+    # 데이터 클리닝, 데이터 증강 클래스 선언
+    DC = DataCleaning(CFG['select_DC'])
+    DA = DataCleaning(CFG['select_DA'])
 
     ### Load Tokenizer and Model ###
     bertmodel, vocab = get_pytorch_kobert_model(cachedir=".cache")
@@ -110,16 +118,16 @@ if __name__ == "__main__":
     tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
 
     ### Define Dataset ###
-    data = pd.read_csv(os.path.join(DATA_DIR, 'train.csv'))
-    dataset_train, dataset_eval = train_test_split(data, train_size=0.7, random_state=SEED)
+    train_df = pd.read_csv('data/train.csv')
+    train_df = DC.process(train_df)
+    train_df = DA.process(train_df)
+    train, val = train_test_split(train_df, train_size=0.7, random_state=SEED)
 
-    # 학습 데이터에 전처리 적용
-
-    data_train = BERTDataset(dataset_train, tok, max_len, True, False)
-    data_eval = BERTDataset(dataset_eval, tok, max_len, True, False)
+    data_train = BERTDataset(train, tok, max_len, True, False)
+    data_val = BERTDataset(val, tok, max_len, True, False)
 
     train_dataloader = DataLoader(data_train, batch_size=batch_size)
-    eval_dataloader = DataLoader(data_eval, batch_size=batch_size)
+    val_dataloader = DataLoader(data_val, batch_size=batch_size)
 
     ### Define Model ###
     model = BERTClassifier(bertmodel, dr_rate=0.5).to(DEVICE)
@@ -143,52 +151,68 @@ if __name__ == "__main__":
     ### Train Model ###
     for e in range(num_epochs):
         train_acc = 0.0
-        test_acc = 0.0
+        val_acc = 0.0
+        wandb.log({"epoch": e})
+
         model.train()
         for batch_id, (token_ids, valid_length, segment_ids, label) in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
-            optimizer.zero_grad()
             token_ids = token_ids.long().to(DEVICE)
             segment_ids = segment_ids.long().to(DEVICE)
-            valid_length= valid_length
             label = label.long().to(DEVICE)
+
             out = model(token_ids, valid_length, segment_ids)
             loss = loss_fn(out, label)
+
+            optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
             optimizer.step()
             scheduler.step()  # Update learning rate schedule
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+
             train_acc += calc_accuracy(out, label)
             if batch_id % log_interval == 0:
                 print("epoch {} batch id {} loss {} train acc {}".format(e+1, batch_id+1, loss.data.cpu().numpy(), train_acc / (batch_id+1)))
+
+            wandb.log({"train loss": loss,
+                       "train accuracy": train_acc / (batch_id+1)})
+
         print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
-        model.eval()
-        for batch_id, (token_ids, valid_length, segment_ids, label) in tqdm(enumerate(eval_dataloader), total=len(eval_dataloader)):
-            token_ids = token_ids.long().to(DEVICE)
-            segment_ids = segment_ids.long().to(DEVICE)
-            valid_length= valid_length
-            label = label.long().to(DEVICE)
-            out = model(token_ids, valid_length, segment_ids)
-            test_acc += calc_accuracy(out, label)
-        print("epoch {} test acc {}".format(e+1, test_acc / (batch_id+1)))
+
+        with torch.no_grad():
+            model.eval()
+            for batch_id, (token_ids, valid_length, segment_ids, label) in tqdm(enumerate(val_dataloader), total=len(val_dataloader)):
+                token_ids = token_ids.long().to(DEVICE)
+                segment_ids = segment_ids.long().to(DEVICE)
+                label = label.long().to(DEVICE)
+
+                out = model(token_ids, valid_length, segment_ids)
+                loss = loss_fn(out, label)
+
+                val_acc += calc_accuracy(out, label)
+
+                wandb.log({"val loss": loss,
+                           "val accuracy": val_acc / (batch_id+1)})
+
+            print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
 
     ### Evaluate Model ###
-    dataset_eval = pd.read_csv(os.path.join(DATA_DIR, 'test.csv'))
-    dataset_eval['target'] = [0]*len(dataset_eval)
-    data_eval = BERTDataset(dataset_eval, tok, max_len, True, False)
-    eval_dataloader = DataLoader(data_eval, batch_size=batch_size, shuffle=False)
+    test_df = pd.read_csv('data/test.csv')
+    test_df['target'] = [0]*len(test_df)
+    test = DC.process(test_df, train=False)
+    data_test = BERTDataset(test, tok, max_len, True, False)
+    eval_dataloader = DataLoader(data_test, batch_size=batch_size, shuffle=False)
 
     preds = []
-    model.eval()
+    test_acc = 0.0
     for batch_id, (token_ids, valid_length, segment_ids, _) in tqdm(enumerate(eval_dataloader), total=len(eval_dataloader)):
         token_ids = token_ids.long().to(DEVICE)
         segment_ids = segment_ids.long().to(DEVICE)
-        valid_length= valid_length
+        
         out = model(token_ids, valid_length, segment_ids)
+
         max_vals, max_indices = torch.max(out, 1)
         preds.extend(list(max_indices))
 
-    print("epoch {} test acc {}".format(e+1, test_acc / (batch_id+1)))
     preds = [int(p) for p in preds]
-
-    dataset_eval['target'] = preds
-    dataset_eval.to_csv(os.path.join(BASE_DIR, 'output.csv'), index=False)
+    test_df['target'] = preds
+    test_df.to_csv(f"{save_path}/{folder_name}_submit.csv", index=False)

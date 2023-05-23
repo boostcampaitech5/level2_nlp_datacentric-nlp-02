@@ -1,7 +1,7 @@
 import pandas as pd
 
 
-class DA():
+class DataAugmentation():
     """
     config select DA에 명시된 Data Augmentation 기법을 적용시켜주는 클래스
     """

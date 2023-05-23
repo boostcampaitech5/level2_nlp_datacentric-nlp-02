@@ -16,7 +16,7 @@ def get_folder_name(CFG):
     save_path = f"./results/{folder_name}"
     CFG['save_path'] = save_path
     os.makedirs(save_path)
-    
+
     return folder_name, save_path
 
 def calc_accuracy(X, Y):
@@ -25,6 +25,17 @@ def calc_accuracy(X, Y):
 
     return acc
 
+def inference(model, dataloader, DEVICE):
+    preds = []
 
-if __name__ == "__main__":
-    pass
+    model.eval()
+    for (token_ids, valid_length, segment_ids, label) in dataloader:
+        token_ids = token_ids.long().to(DEVICE)
+        segment_ids = segment_ids.long().to(DEVICE)
+
+        out = model(token_ids, valid_length, segment_ids)
+
+        _, max_indices = torch.max(out, 1)
+        preds.extend(list(max_indices))
+
+    return preds

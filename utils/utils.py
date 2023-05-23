@@ -1,5 +1,7 @@
 import os
 
+from datetime import datetime, timezone, timedelta
+
 
 def get_folder_name(CFG):
     """
@@ -7,11 +9,13 @@ def get_folder_name(CFG):
 
     ex) 이름001_테스트1, 이름002_테스트2
     """
-    folder_name = f"{CFG['code']}_{CFG['summary']}"
+    now = datetime.now(tz=timezone(timedelta(hours=9)))
+    use_data_str = "_".join([s.split(".")[0]  for s in CFG['select_data']])
+    folder_name = f"{now.strftime('%d%H%M%S')}_{use_data_str}"
     save_path = f"./results/{folder_name}"
+    breakpoint()
     CFG['save_path'] = save_path
     os.makedirs(save_path)
-
     return folder_name, save_path
 
 def create_new_data():

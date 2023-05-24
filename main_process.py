@@ -15,11 +15,12 @@ from transformers import AdamW
 from transformers.optimization import get_cosine_schedule_with_warmup
 from sklearn.model_selection import train_test_split
 from shutil import copyfile
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, f1_score
 from matplotlib.colors import LinearSegmentedColormap
 
 from models import models
 from utils import data_controller, utils
+from data_preprocessing.data_augmentation import DataAugmentation
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -61,6 +62,9 @@ if __name__ == "__main__":
     ### Define Dataset ###
     train_df = data_controller.get_train_dataset(CFG)
     train, val = train_test_split(train_df, train_size=0.7, random_state=SEED)
+    # data augmentation
+    # DA = DataAugmentation(CFG['select_DA'])
+    # train_df = DA.process(train_df)
 
     data_train = data_controller.BERTDataset(train, transform)
     data_val = data_controller.BERTDataset(val, transform)
@@ -98,7 +102,7 @@ if __name__ == "__main__":
             token_ids = token_ids.long().to(DEVICE)
             segment_ids = segment_ids.long().to(DEVICE)
             label = label.long().to(DEVICE)
-
+            
             out = model(token_ids, valid_length, segment_ids)
             loss = loss_fn(out, label)
 
@@ -108,12 +112,15 @@ if __name__ == "__main__":
             scheduler.step()  # Update learning rate schedule
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
 
-            train_acc += utils.calc_accuracy(out, label)
+            max_vals, max_indices = torch.max(out, 1)
+            train_acc += utils.calc_accuracy(max_indices, label)
+
             if batch_id % log_interval == 0:
                 print("epoch {} batch id {} loss {} train acc {}".format(e+1, batch_id+1, loss.data.cpu().numpy(), train_acc / (batch_id+1)))
 
             wandb.log({"train loss": loss,
-                       "train accuracy": train_acc / (batch_id+1)})
+                       "train accuracy": train_acc / (batch_id+1),
+                       "train f1 macro": f1_score(label, max_indices, average='macro')})
         print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
 
         model.eval()
@@ -125,14 +132,17 @@ if __name__ == "__main__":
 
                 out = model(token_ids, valid_length, segment_ids)
                 loss = loss_fn(out, label)
-                val_acc += utils.calc_accuracy(out, label)
+
+                max_vals, max_indices = torch.max(out, 1)
+                val_acc += utils.calc_accuracy(max_indices, label)
 
                 wandb.log({"val loss": loss,
-                           "val accuracy": val_acc / (batch_id+1)})
+                           "val accuracy": val_acc / (batch_id+1),
+                           "val f1 macro": f1_score(label, max_indices, average='macro')})
             print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
 
     ### val datasest 예측 후 결과 저장 ###
-    pred_vals = [int(p) for p in utils.inference(model, val_dataloader, DEVICE)]
+    pred_vals = utils.inference(model, val_dataloader, DEVICE)
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix
@@ -162,10 +172,10 @@ if __name__ == "__main__":
 
     ### Evaluate Model ###
     test = data_controller.get_test_dataset()
-    test['target'] = [0]*len(test)
+    test['target'] = [0] * len(test)
     data_test = data_controller.BERTDataset(test, transform)
     test_dataloader = DataLoader(data_test, batch_size=batch_size, shuffle=False)
     
-    pred_tests = [int(p) for p in utils.inference(model, test_dataloader, DEVICE)]
+    pred_tests = utils.inference(model, test_dataloader, DEVICE)
     test['target'] = pred_tests
     test.to_csv(f"{save_path}/{folder_name}_submit.csv", index=False)

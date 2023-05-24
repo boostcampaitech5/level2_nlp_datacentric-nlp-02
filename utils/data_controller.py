@@ -37,6 +37,8 @@ def get_train_dataset(CFG, SEED):
 
         train_df = pd.concat([train_df, view_df_after_DC], axis=0)
     
+    train_df.drop_duplicates(subset=['input_text', 'target']) # input_text만 동일하고 target 다른 경우 있음 -> 나중에 확인
+
     return train_df, val_df
 
 def get_test_dataset():

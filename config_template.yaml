@@ -1,9 +1,14 @@
 select_data:
   - train
+  # - ai_hub_017
 select_DC:
   train:
+    # - add_news_category
+    # - label_error_detecting
+  ai_hub_017:
 select_DA:
   train:
+  ai_hub_017:
 wandb:
   id: 아이디
   project: 프로젝트명

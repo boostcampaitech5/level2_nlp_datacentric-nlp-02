@@ -5,6 +5,7 @@ import yaml
 import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
+import random
 
 from torch import nn
 from torch.utils.data import DataLoader
@@ -38,8 +39,8 @@ SEED = 42
 # 파이토치의 랜덤시드 고정
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
-# 넘파이 랜덤시드 고정
-np.random.seed(SEED)
+np.random.seed(SEED) # 넘파이 랜덤시드 고정
+random.seed(SEED)
 # config 파일 불러오기
 with open('./use_config.yaml') as f:
     CFG = yaml.load(f, Loader=yaml.FullLoader)
@@ -139,7 +140,7 @@ if __name__ == "__main__":
             print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
 
     ### val datasest 예측 후 결과 저장 ###
-    pred_vals = utils.inference(model, val_dataloader, DEVICE)
+    pred_vals = [int(p) for p in utils.inference(model, val_dataloader, DEVICE)]
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix
@@ -173,6 +174,6 @@ if __name__ == "__main__":
     data_test = data_controller.BERTDataset(test, transform)
     test_dataloader = DataLoader(data_test, batch_size=batch_size, shuffle=False)
     
-    pred_tests = utils.inference(model, test_dataloader, DEVICE)
+    pred_tests = [int(p) for p in utils.inference(model, test_dataloader, DEVICE)]
     test['target'] = pred_tests
     test.to_csv(f"{save_path}/{folder_name}_submit.csv", index=False)

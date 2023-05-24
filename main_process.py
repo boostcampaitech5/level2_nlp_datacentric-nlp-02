@@ -141,8 +141,6 @@ if __name__ == "__main__":
     plt.figure(figsize=(15, 10))
     # 카운트
     sns.heatmap(CM, annot=True, fmt="d", linewidths = 0.01, cmap='jet')
-    plt.xticks(classes)
-    plt.yticks(classes[::-1])
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.savefig(f'{save_path}/{folder_name}_CM_count.png')
@@ -151,8 +149,6 @@ if __name__ == "__main__":
     CM_norm = CM.astype('float') / CM.sum(axis=1)[:, np.newaxis]
     sns.heatmap(CM_norm, annot=True, fmt=".2f", linewidths = 0.01,
                 cmap='jet', vmin=0, vmax=1)
-    plt.xticks(classes)
-    plt.yticks(classes[::-1])
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.savefig(f'{save_path}/{folder_name}_CM_per.png')

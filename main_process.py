@@ -117,8 +117,7 @@ if __name__ == "__main__":
                 print("epoch {} batch id {} loss {} train acc {}".format(e+1, batch_id+1, loss.data.cpu().numpy(), train_acc / (batch_id+1)))
 
             wandb.log({"train loss": loss,
-                       "train accuracy": train_acc / (batch_id+1),
-                       "train f1 macro": f1_score(label.cpu(), max_indices.cpu(), average='macro')})
+                       "train accuracy": train_acc / (batch_id+1)})
         print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
 
         model.eval()

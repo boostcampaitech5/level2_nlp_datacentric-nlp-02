@@ -5,17 +5,20 @@ class DataAugmentation():
     """
     config select DA에 명시된 Data Augmentation 기법을 적용시켜주는 클래스
     """
-    def __init__(self, select_list):
-        self.select_list = select_list
+    def __init__(self, select_DA):
+        self.select_DA = select_DA
 
     def process(self, df):
-        if self.select_list:
-            aug_df = pd.DataFrame(columns=df.columns)
+        use_file_list = df['track'].unique()
 
-            for method_name in self.select_list:
-                method = eval("self." + method_name)
-                aug_df = pd.concat([aug_df, method(df)])
+        for file_name in use_file_list:
+            if self.select_DA[file_name]:
+                aug_df = pd.DataFrame(columns=df.columns)
 
-            df = pd.concat([df, aug_df])
+                for method_name in self.select_DA[file_name]:
+                    method = eval("self." + method_name)
+                    aug_df = pd.concat([aug_df, method(df)])
+
+                df = pd.concat([df, aug_df])
 
         return df

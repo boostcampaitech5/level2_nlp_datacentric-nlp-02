@@ -13,7 +13,6 @@ from kobert import get_tokenizer
 from kobert import get_pytorch_kobert_model
 from transformers import AdamW
 from transformers.optimization import get_cosine_schedule_with_warmup
-from sklearn.model_selection import train_test_split
 from shutil import copyfile
 from sklearn.metrics import confusion_matrix, f1_score
 from matplotlib.colors import LinearSegmentedColormap
@@ -60,11 +59,10 @@ if __name__ == "__main__":
     transform = nlp.data.BERTSentenceTransform(tok, max_seq_length=max_len, pad=True, pair=False)
 
     ### Define Dataset ###
-    train_df = data_controller.get_train_dataset(CFG)
-    train, val = train_test_split(train_df, train_size=0.7, random_state=SEED)
+    train, val = data_controller.get_train_dataset(CFG, SEED)
     # data augmentation
-    # DA = DataAugmentation(CFG['select_DA'])
-    # train_df = DA.process(train_df)
+    DA = DataAugmentation(CFG['select_DA'])
+    train = DA.process(train)
 
     data_train = data_controller.BERTDataset(train, transform)
     data_val = data_controller.BERTDataset(val, transform)
@@ -120,7 +118,7 @@ if __name__ == "__main__":
 
             wandb.log({"train loss": loss,
                        "train accuracy": train_acc / (batch_id+1),
-                       "train f1 macro": f1_score(label, max_indices, average='macro')})
+                       "train f1 macro": f1_score(label.cpu(), max_indices.cpu(), average='macro')})
         print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
 
         model.eval()
@@ -138,7 +136,7 @@ if __name__ == "__main__":
 
                 wandb.log({"val loss": loss,
                            "val accuracy": val_acc / (batch_id+1),
-                           "val f1 macro": f1_score(label, max_indices, average='macro')})
+                           "val f1 macro": f1_score(label.cpu(), max_indices.cpu(), average='macro')})
             print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
 
     ### val datasest 예측 후 결과 저장 ###

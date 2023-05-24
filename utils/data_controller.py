@@ -2,9 +2,9 @@ import pandas as pd
 import numpy as np
 
 from torch.utils.data import Dataset
+from sklearn.model_selection import train_test_split
 
 from data_preprocessing.data_cleaning import DataCleaning
-from data_preprocessing.data_augmentation import DataAugmentation
 
 
 class BERTDataset(Dataset):
@@ -12,7 +12,7 @@ class BERTDataset(Dataset):
         texts = dataset['input_text'].tolist()
         targets = dataset['target'].tolist()
 
-        self.sentences = [transform(i) for i in texts]
+        self.sentences = [transform([i]) for i in texts]
         self.labels = [np.int32(i) for i in targets]
 
     def __getitem__(self, i):
@@ -21,21 +21,23 @@ class BERTDataset(Dataset):
     def __len__(self):
         return (len(self.labels))
     
-def get_train_dataset(CFG):
-    df = pd.DataFrame()
+def get_train_dataset(CFG, SEED):
+    train_df = pd.DataFrame()
+    val_df = pd.DataFrame()
 
     for file_name in CFG['select_data']:
         view_df = pd.read_csv(f'data/{file_name}.csv')
         
         DC = DataCleaning(CFG['select_DC'][file_name])
         view_df_after_DC = DC.process(view_df)
-        
-        DA = DataAugmentation(CFG['select_DA'][file_name])
-        view_df_after_DC_and_DA = DC.process(view_df_after_DC)
+        view_df_after_DC['track'] = file_name
 
-        df = pd.concat([df, view_df_after_DC_and_DA], axis=0)
+        if file_name == "train":
+            view_df_after_DC, val_df = train_test_split(view_df_after_DC, train_size=0.7, random_state=SEED)
+
+        train_df = pd.concat([train_df, view_df_after_DC], axis=0)
     
-    return df
+    return train_df, val_df
 
 def get_test_dataset():
     df = pd.read_csv('data/test.csv')

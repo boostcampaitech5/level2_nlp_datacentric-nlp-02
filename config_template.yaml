@@ -1,7 +1,9 @@
-code: 이름001
-summary: 실험 요약
+select_data:
+  - train
 select_DC:
+  train:
 select_DA:
+  train:
 wandb:
-  id: wandb 계정
-  project: level2_nlp_datacentric
+  id: 아이디
+  project: 프로젝트명

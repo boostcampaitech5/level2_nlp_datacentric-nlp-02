@@ -136,17 +136,33 @@ if __name__ == "__main__":
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix
-    class_name = ['정치', '경제', '사회', '생활문화', '세계', 'IT과학', '스포츠']
+    classes = ['Politics', 'Economy', 'Society', 'Culture', 'World', 'IT/Science', 'Sport']
     CM = confusion_matrix(val['target'], val['pred_y'])
     plt.figure(figsize=(15, 10))
-    colors = ['#FFFFFF', '#FF0000', '#FF8C00', '#FFFF00', '#008000', '#0000FF', '#000080', '#800080']
-    cmap = LinearSegmentedColormap.from_list('my_cmap', colors, gamma=2)
-    sns.heatmap(CM, annot=True, fmt="d", cmap='Blues')
-    plt.xticks(range(7), class_name)
-    plt.yticks(range(7), class_name)
+    # 카운트
+    sns.heatmap(CM, annot=True, fmt="d", linewidths = 0.01, cmap='jet')
+    plt.xticks(classes)
+    plt.yticks(classes[::-1])
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.savefig(f'{save_path}/{folder_name}_CM.png')
+    plt.savefig(f'{save_path}/{folder_name}_CM_count.png')
+    # 퍼센트
+    plt.figure(figsize=(15, 10))
+    CM_norm = CM.astype('float') / CM.sum(axis=1)[:, np.newaxis]
+    sns.heatmap(CM_norm, annot=True, fmt=".2f", linewidths = 0.01,
+                cmap='jet', vmin=0, vmax=1)
+    plt.xticks(classes)
+    plt.yticks(classes[::-1])
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.savefig(f'{save_path}/{folder_name}_CM_per.png')
+    # wandb confusion matrix
+    wandb.log({
+        "CM": wandb.plot.confusion_matrix(
+            y_true=val['target'].values, preds=val['pred_y'].values,
+            class_names=classes
+        )
+    })
 
     ### Evaluate Model ###
     test = data_controller.get_test_dataset()

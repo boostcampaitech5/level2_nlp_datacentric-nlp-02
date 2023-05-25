@@ -25,14 +25,14 @@ def get_train_dataset(CFG, SEED):
     train_df = pd.DataFrame()
     val_df = pd.DataFrame()
 
-    for file_name in CFG['select_data']:
+    for idx, file_name in enumerate(CFG['select_data']):
         view_df = pd.read_csv(f'data/{file_name}.csv')
         
         DC = DataCleaning(CFG['select_DC'][file_name])
         view_df_after_DC = DC.process(view_df)
         view_df_after_DC['track'] = file_name
 
-        if file_name == "train":
+        if idx == 0:
             view_df_after_DC, val_df = train_test_split(view_df_after_DC, train_size=0.7, random_state=SEED)
 
         train_df = pd.concat([train_df, view_df_after_DC], axis=0)

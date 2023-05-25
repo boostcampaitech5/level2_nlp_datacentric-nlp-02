@@ -1,9 +1,22 @@
 select_data:
   - train
+  # - train_No_G2P
+  # - ai_hub_017
+  # - ai_hub_146_val
 select_DC:
   train:
+    # - add_news_category
+    # - label_error_detecting
+  train_No_G2P:
+    # - add_news_category
+    # - label_error_detecting
+  ai_hub_017:
+  ai_hub_146_val:
 select_DA:
   train:
+  train_No_G2P:
+  ai_hub_017:
+  ai_hub_146_val:
 wandb:
   id: 아이디
   project: 프로젝트명

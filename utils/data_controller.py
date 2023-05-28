@@ -1,5 +1,5 @@
 import pandas as pd
-import numpy as np
+import torch
 
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
@@ -8,20 +8,29 @@ from data_preprocessing.data_cleaning import DataCleaning
 
 
 class BERTDataset(Dataset):
-    def __init__(self, dataset, transform):
-        texts = dataset['input_text'].tolist()
-        targets = dataset['target'].tolist()
-
-        self.sentences = [transform([i]) for i in texts]
-        self.labels = [np.int32(i) for i in targets]
-
-    def __getitem__(self, i):
-        return (self.sentences[i] + (self.labels[i], ))
-
+    def __init__(self, data, tokenizer):
+        input_texts = data['text']
+        targets = data['target']
+        self.inputs = []; self.labels = []
+        for text, label in zip(input_texts, targets):
+            tokenized_input = tokenizer(text, padding='max_length', truncation=True, return_tensors='pt')
+            self.inputs.append(tokenized_input)
+            self.labels.append(torch.tensor(label))
+    
+    def __getitem__(self, idx):
+        return {
+            'input_ids': self.inputs[idx]['input_ids'].squeeze(0),  
+            'attention_mask': self.inputs[idx]['attention_mask'].squeeze(0),
+            'labels': self.labels[idx].squeeze(0)
+        }
+    
     def __len__(self):
-        return (len(self.labels))
+        return len(self.labels)
     
 def get_train_dataset(CFG, SEED):
+    """
+    config에 명시한 select data를 
+    """
     train_df = pd.DataFrame()
     val_df = pd.DataFrame()
 
@@ -33,15 +42,18 @@ def get_train_dataset(CFG, SEED):
         view_df_after_DC['track'] = file_name
 
         if idx == 0:
-            view_df_after_DC, val_df = train_test_split(view_df_after_DC, train_size=0.7, random_state=SEED)
+            view_df_after_DC, val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
 
         train_df = pd.concat([train_df, view_df_after_DC], axis=0)
     
-    train_df.drop_duplicates(subset=['input_text', 'target']) # input_text만 동일하고 target 다른 경우 있음 -> 나중에 확인
+    train_df.drop_duplicates(subset=['text', 'target'], inplace=True)
 
     return train_df, val_df
 
 def get_test_dataset():
+    """
+    test.csv 파일을 불러오는 메소드
+    """
     df = pd.read_csv('data/test.csv')
 
     return df

@@ -1,5 +1,7 @@
 import os
 import torch
+import numpy as np
+import evaluate
 
 from datetime import datetime, timezone, timedelta
 
@@ -24,17 +26,16 @@ def calc_accuracy(max_indices, Y):
 
     return acc
 
-def inference(model, dataloader, DEVICE):
-    preds = []
-
+def inference(model, data, tokenizer, DEVICE):
     model.eval()
-    for (token_ids, valid_length, segment_ids, label) in dataloader:
-        token_ids = token_ids.long().to(DEVICE)
-        segment_ids = segment_ids.long().to(DEVICE)
-
-        out = model(token_ids, valid_length, segment_ids)
-
-        _, max_indices = torch.max(out, 1)
-        preds.extend(list(max_indices))
+    preds = []
+    
+    for idx, sample in data.iterrows():
+        inputs = tokenizer(sample['text'], return_tensors="pt").to(DEVICE)
+        
+        with torch.no_grad():
+            logits = model(**inputs).logits
+            pred = torch.argmax(torch.nn.Softmax(dim=1)(logits), dim=1).cpu().numpy()
+            preds.extend(pred)
 
     return preds

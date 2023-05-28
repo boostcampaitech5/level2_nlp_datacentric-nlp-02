@@ -1,24 +1,20 @@
+import os
+import random
 import numpy as np
-import gluonnlp as nlp
 import torch
 import yaml
 import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
-import random
+import evaluate
 
-from torch import nn
-from torch.utils.data import DataLoader
-from tqdm.notebook import tqdm
-from kobert import get_tokenizer
-from kobert import get_pytorch_kobert_model
-from transformers import AdamW
-from transformers.optimization import get_cosine_schedule_with_warmup
 from shutil import copyfile
 from sklearn.metrics import confusion_matrix, f1_score
-from matplotlib.colors import LinearSegmentedColormap
+from transformers import AutoModelForSequenceClassification
+from transformers import DataCollatorWithPadding
+from transformers import TrainingArguments, Trainer
 
-from models import models
+from data import tokenization_kobert
 from utils import data_controller, utils
 from data_preprocessing.data_augmentation import DataAugmentation
 
@@ -26,21 +22,23 @@ import warnings
 warnings.filterwarnings('ignore')
 
 
+f1 = evaluate.load('f1')
+def compute_metrics(eval_pred):
+    predictions, labels = eval_pred
+    predictions = np.argmax(predictions, axis=1)
+
+    return f1.compute(predictions=predictions, references=labels, average='macro')
+
+
 ### Setting parameters ###
-max_len = 64
-batch_size = 64
-warmup_ratio = 0.1
-num_epochs = 5
-max_grad_norm = 1
-log_interval = 200
-learning_rate =  5e-5
-DEVICE = torch.device('cuda')
-SEED = 42
-# 파이토치의 랜덤시드 고정
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+# SEED 고정
+SEED = 456
+random.seed(SEED)
+np.random.seed(SEED)
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
-np.random.seed(SEED) # 넘파이 랜덤시드 고정
-random.seed(SEED)
+torch.cuda.manual_seed_all(SEED)
 # config 파일 불러오기
 with open('./use_config.yaml') as f:
     CFG = yaml.load(f, Loader=yaml.FullLoader)
@@ -54,10 +52,9 @@ if __name__ == "__main__":
                config=CFG, entity=CFG['wandb']['id'], dir=save_path)
 
     ### Load Tokenizer and Model ###
-    bertmodel, vocab = get_pytorch_kobert_model(cachedir=".cache")
-    tokenizer = get_tokenizer()
-    tok = nlp.data.BERTSPTokenizer(tokenizer, vocab, lower=False)
-    transform = nlp.data.BERTSentenceTransform(tok, max_seq_length=max_len, pad=True, pair=False)
+    model_name = 'monologg/kobert'
+    tokenizer = tokenization_kobert.KoBertTokenizer.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=7).to(DEVICE)
 
     ### Define Dataset ###
     train, val = data_controller.get_train_dataset(CFG, SEED)
@@ -65,82 +62,53 @@ if __name__ == "__main__":
     DA = DataAugmentation(CFG['select_DA'])
     train = DA.process(train)
 
-    data_train = data_controller.BERTDataset(train, transform)
-    data_val = data_controller.BERTDataset(val, transform)
-
-    train_dataloader = DataLoader(data_train, batch_size=batch_size)
-    val_dataloader = DataLoader(data_val, batch_size=batch_size)
-
-    ### Define Model ###
-    model = models.BERTClassifier(bertmodel, dr_rate=0.5).to(DEVICE)
-
-    ### Define Optimizer and Scheduler ###
-    # Prepare optimizer and schedule (linear warmup and decay)
-    no_decay = ['bias', 'LayerNorm.weight']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-        {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
-
-    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate)
-    loss_fn = nn.CrossEntropyLoss()
-
-    t_total = len(train_dataloader) * num_epochs
-    warmup_step = int(t_total * warmup_ratio)
-
-    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step, num_training_steps=t_total)
+    data_train = data_controller.BERTDataset(train, tokenizer)
+    data_val = data_controller.BERTDataset(val, tokenizer)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
     ### Train Model ###
-    for e in range(num_epochs):
-        train_acc = 0.0
-        val_acc = 0.0
-        wandb.log({"epoch": e})
+    training_args = TrainingArguments(
+    output_dir=save_path,
+    overwrite_output_dir=True,
+    do_train=True,
+    do_eval=True,
+    do_predict=True,
+    logging_strategy='steps',
+    evaluation_strategy='steps',
+    save_strategy='steps',
+    logging_steps=100,
+    eval_steps=100,
+    save_steps=100,
+    save_total_limit=2,
+    learning_rate= 2e-05,
+    adam_beta1 = 0.9,
+    adam_beta2 = 0.999,
+    adam_epsilon=1e-08,
+    weight_decay=0.01,
+    lr_scheduler_type='linear',
+    per_device_train_batch_size=32,
+    per_device_eval_batch_size=32,
+    num_train_epochs=2,
+    load_best_model_at_end=True,
+    metric_for_best_model='eval_f1',
+    greater_is_better=True,
+    seed=SEED,
+    report_to="wandb"
+    )   
 
-        model.train()
-        for batch_id, (token_ids, valid_length, segment_ids, label) in tqdm(enumerate(train_dataloader), total=len(train_dataloader)):
-            token_ids = token_ids.long().to(DEVICE)
-            segment_ids = segment_ids.long().to(DEVICE)
-            label = label.long().to(DEVICE)
-            
-            out = model(token_ids, valid_length, segment_ids)
-            loss = loss_fn(out, label)
+    trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=data_train,
+    eval_dataset=data_val,
+    data_collator=data_collator,
+    compute_metrics=compute_metrics,
+    )
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            scheduler.step()  # Update learning rate schedule
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-
-            max_vals, max_indices = torch.max(out, 1)
-            train_acc += utils.calc_accuracy(max_indices, label)
-
-            if batch_id % log_interval == 0:
-                print("epoch {} batch id {} loss {} train acc {}".format(e+1, batch_id+1, loss.data.cpu().numpy(), train_acc / (batch_id+1)))
-
-            wandb.log({"train loss": loss,
-                       "train accuracy": train_acc / (batch_id+1)})
-        print("epoch {} train acc {}".format(e+1, train_acc / (batch_id+1)))
-
-        model.eval()
-        with torch.no_grad():
-            for batch_id, (token_ids, valid_length, segment_ids, label) in tqdm(enumerate(val_dataloader), total=len(val_dataloader)):
-                token_ids = token_ids.long().to(DEVICE)
-                segment_ids = segment_ids.long().to(DEVICE)
-                label = label.long().to(DEVICE)
-
-                out = model(token_ids, valid_length, segment_ids)
-                loss = loss_fn(out, label)
-
-                max_vals, max_indices = torch.max(out, 1)
-                val_acc += utils.calc_accuracy(max_indices, label)
-
-                wandb.log({"val loss": loss,
-                           "val accuracy": val_acc / (batch_id+1),
-                           "val f1 macro": f1_score(label.cpu(), max_indices.cpu(), average='macro')})
-            print("epoch {} val acc {}".format(e+1, val_acc / (batch_id+1)))
+    trainer.train()
 
     ### val datasest 예측 후 결과 저장 ###
-    pred_vals = [int(p) for p in utils.inference(model, val_dataloader, DEVICE)]
+    pred_vals = utils.inference(model, data_val, tokenizer, DEVICE)
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix
@@ -170,10 +138,7 @@ if __name__ == "__main__":
 
     ### Evaluate Model ###
     test = data_controller.get_test_dataset()
-    test['target'] = [0] * len(test)
-    data_test = data_controller.BERTDataset(test, transform)
-    test_dataloader = DataLoader(data_test, batch_size=batch_size, shuffle=False)
+    pred_tests = utils.inference(model, test, tokenizer, DEVICE)
     
-    pred_tests = [int(p) for p in utils.inference(model, test_dataloader, DEVICE)]
     test['target'] = pred_tests
     test.to_csv(f"{save_path}/{folder_name}_submit.csv", index=False)

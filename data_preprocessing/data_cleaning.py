@@ -51,7 +51,7 @@ class DataCleaning():
         """
         shuffle을 못 쓰니 직접 dataframe을 뒤섞어 주는 메소드
         """
-        df = df.sample(frac=1, random_state=42, axis=0)
+        df = df.sample(frac=1, random_state=456, axis=0)
         df.reset_index(drop=True, inplace=True)
         
         return df

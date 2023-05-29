@@ -112,7 +112,7 @@ if __name__ == "__main__":
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix
-    classes = ['Politics', 'Economy', 'Society', 'Culture', 'World', 'IT/Science', 'Sport']
+    classes = ['IT/Science', 'Economy', 'Society', 'Culture', 'World', 'Sport', 'Politics']
     CM = confusion_matrix(val['target'], val['pred_y'])
     plt.figure(figsize=(15, 10))
     # 카운트

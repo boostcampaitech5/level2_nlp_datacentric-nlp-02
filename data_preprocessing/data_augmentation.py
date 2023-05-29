@@ -1,5 +1,7 @@
 import pandas as pd
 
+from koeda import SR, RI, RS, RD
+
 
 class DataAugmentation():
     """
@@ -22,3 +24,25 @@ class DataAugmentation():
                 df = pd.concat([df, aug_df])
 
         return df
+    
+    def random_deletion(self, df):
+        """
+        Easy Data Augmentation 기법 중 랜덤으로 데이터 삭제
+        """
+        aug_df = df.copy()
+
+        func = RD("Okt")
+        aug_df['text'] = func(aug_df['text'].to_list(), 0.1)
+
+        return aug_df
+    
+    def random_swap(self, df):
+        """
+        Easy Data Augmentation 기법 중 랜덤으로 단어 위치 바꿈
+        """
+        aug_df = df.copy()
+
+        func = RS("Okt")
+        aug_df['text'] = func(aug_df['text'].to_list(), 0.1)
+
+        return aug_df

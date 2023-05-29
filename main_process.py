@@ -108,7 +108,7 @@ if __name__ == "__main__":
     trainer.train()
 
     ### val datasest 예측 후 결과 저장 ###
-    pred_vals = utils.inference(model, data_val, tokenizer, DEVICE)
+    pred_vals = utils.inference(model, val, tokenizer, DEVICE)
     val['pred_y'] = pred_vals
     val.to_csv(f"{save_path}/{folder_name}_val.csv", index=False)
     # confusion matrix

@@ -1,5 +1,8 @@
 import pandas as pd
 
+from collections import Counter
+
+
 class DataCleaning():
     """
     config의 select DC에 명시된 Data Cleaning 기법을 적용시켜주는 클래스
@@ -54,4 +57,35 @@ class DataCleaning():
         df = df.sample(frac=1, random_state=456, axis=0)
         df.reset_index(drop=True, inplace=True)
         
+        return df
+    
+    def add_label_token(self, df):
+        """
+        text 앞에 target 정보를 입력하기
+        """
+        label2num = {
+            k: v for k, v in enumerate(['IT과학', '경제', '사회', '생활문화', '세계', '스포츠', '정치'])
+        }
+
+        df['text'] = df['target'].apply(lambda x: label2num[x]) + " [SEP] " + df['text']
+
+        return df
+    
+    def add_most_word_5(self, df):
+        """
+        target별 빈도수 기준 상위 5개 단어 붙이기
+        """
+        label2top5 = dict()
+        for target in range(7):
+            view_df = df[df['target'] == target]
+
+            arr = []
+            for row in view_df['text'].to_list():
+                arr.extend(row.split())
+
+            counter = Counter(arr)
+            label2top5[target] = [most for most, count in counter.most_common(5)]
+        
+        df['text'] = df['target'].apply(lambda x: " ".join(label2top5[x])) + " [SEP] " + df['text']
+
         return df

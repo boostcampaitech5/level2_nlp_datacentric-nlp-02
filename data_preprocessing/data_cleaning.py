@@ -1,4 +1,5 @@
 import pandas as pd
+import re
 
 class DataCleaning():
     """
@@ -53,5 +54,27 @@ class DataCleaning():
         """
         df = df.sample(frac=1, random_state=456, axis=0)
         df.reset_index(drop=True, inplace=True)
+        
+        return df
+    
+    def zh_2_ko(self, df):
+        """
+        딕셔너리를 이용해서 자주 나오는 한자를 한국어로 변환 
+        """
+        zh_dict = {'美': '미국', '北': '북한', '中': '중국', '朴': '박근혜', '日': '일본', '靑': '청와대', '與': '여당', '英': '영국', 
+                   '文': '문재인', '野': '야당', '獨': '독일', '伊': '이탈리아', '韓': '한국', '佛': '프랑스', '前': '전', '檢': '검찰', 
+                   '軍': '군', '安': '안철수', '反': '반', '行': '행', '南': '남한', '亞': '아시아', '對': '대' , '硏': '연구원', 
+                   '重': '중공업', '黃': '황교안' , '外': '외', '新': '새로운', '銀': '은행', '株': '주식', '展': '전시', '中企': '중소기업중앙회',
+                   '車': '차', '親': '친', '孫': '손학규'}
+        def is_zh(x): 
+            l_ch = re.findall('[一-龥]+',x)
+            if l_ch:
+                for c in l_ch:
+                    if c in zh_dict.keys():
+                        x = re.sub(c,zh_dict[c],x)
+                return x
+            else:
+                return x
+        df['text'] = df['text'].apply(is_zh)
         
         return df

@@ -43,6 +43,13 @@ def get_train_dataset(CFG, SEED):
 
         if idx == 0:
             view_df_after_DC, val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
+        
+        if 'bt' in file_name:
+            
+            train_bt = view_df_after_DC.copy()
+            train_bt['text'] = train_bt['bt']
+            view_df_after_DC = pd.concat([view_df_after_DC,train_bt], axis=0)
+            view_df_after_DC = view_df_after_DC[['ID','text','target','url','date','track']]
 
         train_df = pd.concat([train_df, view_df_after_DC], axis=0)
     

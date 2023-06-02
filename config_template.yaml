@@ -1,12 +1,20 @@
 select_data:
-  - train # 0번째 index에 있어야 함
-  # - ai_hub_original
+  - train_spelling_v2_label_v1 # 0번째 index에 있어야 함
 select_DC:
-  train:
-  ai_hub_original:
+  train_spelling_v2_label_v1:
+    # - add_most_word_5
+    # - add_label_token
+    # - mix_mix
 select_DA:
-  train:
-  ai_hub_original:
+  train_spelling_v2_label_v1:
+    # - random_deletion
+    # - random_swap
+    # - EDA
 wandb:
   id: 아이디
   project: 프로젝트명
+option:
+  stack: # 단일 데이터셋 중복 첨가할 때 사용
+    trigger: False
+    stack_num: 3
+EDA_p: 0.7 # EDA 적용 확률 [0.0, 1.0]

@@ -59,8 +59,9 @@ if __name__ == "__main__":
     ### Define Dataset ###
     train, val = data_controller.get_train_dataset(CFG, SEED)
     # data augmentation
-    DA = DataAugmentation(CFG['select_DA'])
+    DA = DataAugmentation(CFG['select_DA'], CFG['EDA_p'])
     train = DA.process(train)
+    print(f"데이터 증강 후 train shape >> {train.shape}")
 
     data_train = data_controller.BERTDataset(train, tokenizer)
     data_val = data_controller.BERTDataset(val, tokenizer)

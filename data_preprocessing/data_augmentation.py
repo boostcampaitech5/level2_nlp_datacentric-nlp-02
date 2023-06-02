@@ -25,7 +25,7 @@ class DataAugmentation():
                 for method_name in self.select_DA[file_name]:
                     print(f"{file_name}에 {method_name} 적용중 ===")
                     method = eval("self." + method_name)
-                    aug_df = pd.concat([aug_df, method(df)])
+                    aug_df = pd.concat([aug_df, method(df[df['track'] == file_name])])
 
                 df = pd.concat([df, aug_df])
                 print(f"적용 후 데이터 크기 >> {df.shape}")

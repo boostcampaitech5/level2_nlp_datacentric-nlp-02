@@ -67,7 +67,7 @@ def get_train_dataset(CFG, SEED):
     # LOG: 데이터 크기 확인
     print(f"train_df shape >> {train_df.shape}\t\tval_df shape >> {val_df.shape}")
 
-    return train_df, val_df
+    return train_df[['text', 'target', 'track']], val_df[['text', 'target']]
 
 def get_test_dataset():
     """

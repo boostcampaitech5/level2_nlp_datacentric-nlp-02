@@ -40,9 +40,21 @@ def get_train_dataset(CFG, SEED):
         for _ in range(CFG['option']['stack']['stack_num']):
             view_df = pd.read_csv(f"data/{file_name}.csv")
 
+
+        if idx == 0:
+            view_df_after_DC, val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
+        
+        if 'bt' in file_name:
+            
+            train_bt = view_df_after_DC.copy()
+            train_bt['text'] = train_bt['bt']
+            view_df_after_DC = pd.concat([view_df_after_DC,train_bt], axis=0)
+            view_df_after_DC = view_df_after_DC[['ID','text','target','url','date','track']]
+
             DC = DataCleaning(CFG['select_DC'][file_name])
             view_df_after_DC = DC.process(view_df)
             view_df_after_DC['track'] = file_name
+
 
             view_df_after_DC, _val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
 

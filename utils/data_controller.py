@@ -34,12 +34,12 @@ def get_train_dataset(CFG, SEED):
     train_df = pd.DataFrame()
     val_df = pd.DataFrame()
 
-    for idx, file_name in enumerate(CFG['select_data']):
-        view_df = pd.read_csv(f'data/{file_name}.csv')
-        
-        DC = DataCleaning(CFG['select_DC'][file_name])
-        view_df_after_DC = DC.process(view_df)
-        view_df_after_DC['track'] = file_name
+    if CFG['option']['stack']['trigger']:
+        file_name = CFG['select_data'][0]
+        print("단일 데이터셋을 여러 번 쌓는 실험")
+        for _ in range(CFG['option']['stack']['stack_num']):
+            view_df = pd.read_csv(f"data/{file_name}.csv")
+
 
         if idx == 0:
             view_df_after_DC, val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
@@ -51,11 +51,35 @@ def get_train_dataset(CFG, SEED):
             view_df_after_DC = pd.concat([view_df_after_DC,train_bt], axis=0)
             view_df_after_DC = view_df_after_DC[['ID','text','target','url','date','track']]
 
-        train_df = pd.concat([train_df, view_df_after_DC], axis=0)
-    
-    train_df.drop_duplicates(subset=['text', 'target'], inplace=True)
+            DC = DataCleaning(CFG['select_DC'][file_name])
+            view_df_after_DC = DC.process(view_df)
+            view_df_after_DC['track'] = file_name
 
-    return train_df, val_df
+
+            view_df_after_DC, _val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
+
+            train_df = pd.concat([train_df, view_df_after_DC], axis=0)
+            val_df = pd.concat([val_df, _val_df], axis=0)
+    else:
+        print("다양한 데이터셋을 사용하는 실험")
+        for idx, file_name in enumerate(CFG['select_data']):
+            view_df = pd.read_csv(f'data/{file_name}.csv')
+            
+            DC = DataCleaning(CFG['select_DC'][file_name])
+            view_df_after_DC = DC.process(view_df)
+            view_df_after_DC['track'] = file_name
+
+            if idx == 0:
+                view_df_after_DC, val_df = train_test_split(view_df_after_DC, test_size=0.3, random_state=SEED)
+
+            train_df = pd.concat([train_df, view_df_after_DC], axis=0)
+    
+        train_df.drop_duplicates(subset=['text', 'target'], inplace=True)
+    
+    # LOG: 데이터 크기 확인
+    print(f"train_df shape >> {train_df.shape}\t\tval_df shape >> {val_df.shape}")
+
+    return train_df[['text', 'target', 'track']], val_df[['text', 'target']]
 
 def get_test_dataset():
     """
